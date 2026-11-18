@@ -10,12 +10,14 @@ only, deterministic, well under a second per case.
 
 How it works: every past big launch in the case's `comparables` gives its release-day curve on the log scale
 relative to its own hour 1. Launches are weighted by how they unlocked (rolling midnight-local console launches,
-like GTA VI's, count most; single global unlocks and early-access days less) and by how closely their run-up
-into hour 1 matches the case's. Each hour's forecast is a weighted mixture of log-normal kernels, one per launch,
+like GTA VI's, count most; single global unlocks and early-access days less) by how closely their run-up
+into hour 1 matches the case's, and by how close their hour 1 is in size to the case's (the biggest launches
+fall off more gently after hour 1 than small ones). Each hour's forecast is a weighted mixture of log-normal kernels, one per launch,
 read off at 5/25/50/75/95% and scaled by the hour-1 print.
 
-Leave-one-out on the comparables' own release days (`tools/loo_eval.py`): mean log pinball loss 0.268, against
-0.321 for the house persistence baseline on the same pseudo-cases.
+Leave-one-out on the comparables' own release days (`tools/loo_eval.py`): mean log pinball loss 0.253, against
+0.321 for the house persistence baseline on the same pseudo-cases (0.259 in a nested leave-one-out, where the
+settings are re-chosen without the held-out launch each time).
 
 ## Run it
 

@@ -36,8 +36,11 @@ SETTINGS = {
     "global_unlock": 0.1,       # multiplier for a single simultaneous global unlock
     "early_access": 0.8,        # multiplier for early-access-contaminated launches
     "weak_tier": 0.3,           # multiplier for launches the case marks as weak analogues
-    "runup_bandwidth": 0.4,     # kernel width on the run-up feature, log units
-    # Leave-one-out on 2026-11-17: mean log pinball 0.268 vs 0.321 for the house baseline.
+    "runup_bandwidth": 0.8,     # kernel width on the run-up feature, log units
+    "size_bandwidth": 1.0,      # kernel width on ln(hour 1): big launches decay differently from small ones
+    "shrink": 0.1,              # pull of each launch's shape towards persistence (0 = none)
+    # Leave-one-out on 2026-11-18: mean log pinball 0.253 vs 0.321 for the house baseline
+    # (nested leave-one-out, with these settings re-chosen without the held-out launch each time: 0.259).
     "width_base": 0.12,         # kernel width at hour 2, log units
     "width_growth": 0.04,       # extra kernel width per sqrt(hours after hour 1)
 }
@@ -117,6 +120,7 @@ def launch_shapes(comparables, cfg, skip=None):
             "name": name,
             "prior": unlock_weight(launch, cfg),
             "runup": runup(series, start, first),
+            "size": math.log(first),
             "shape": shape,
         })
     return shapes
@@ -168,11 +172,18 @@ def forecast(case, cfg=SETTINGS, skip=None):
     own_runup = runup(own, start, first)
 
     shapes = launch_shapes(case.get("comparables"), cfg, skip)
+    # Above the biggest past launch the size kernel would lean on one or two curves; compare it as that launch.
+    own_size = math.log(first)
+    if shapes:
+        own_size = min(own_size, max(s["size"] for s in shapes))
     weights = []
     for s in shapes:
         w = s["prior"]
         if own_runup is not None and s["runup"] is not None:
             gap = (own_runup - s["runup"]) / cfg["runup_bandwidth"]
+            w *= math.exp(-0.5 * gap * gap)
+        if cfg["size_bandwidth"] > 0:
+            gap = (own_size - s["size"]) / cfg["size_bandwidth"]
             w *= math.exp(-0.5 * gap * gap)
         weights.append(w)
     if shapes and sum(weights) < 1e-12:
@@ -181,7 +192,8 @@ def forecast(case, cfg=SETTINGS, skip=None):
     hours = []
     for h in HOURS:
         width = cfg["width_base"] + cfg["width_growth"] * math.sqrt(h - 1)
-        parts = [(w, s["shape"][h], width) for s, w in zip(shapes, weights) if w > 0 and h in s["shape"]]
+        keep = 1.0 - cfg["shrink"]
+        parts = [(w, keep * s["shape"][h], width) for s, w in zip(shapes, weights) if w > 0 and h in s["shape"]]
         if not parts:
             parts = [(1.0, 0.0, 0.15 * math.sqrt(h - 1))]
         logs = [mixture_quantile(parts, level) for level in QUANTILE_LEVELS]
